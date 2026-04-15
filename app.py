@@ -5,10 +5,22 @@ from datetime import datetime
 import time
 
 # ==================== CONFIGURAÇÃO ====================
-st.set_page_config(page_title="Flash Stop - Gestão", layout="wide", page_icon="⚡")
+st.set_page_config(page_title="Flash Stop Pro v3.7", layout="wide", page_icon="⚡")
 
 conn = st.connection("gsheets", type=GSheetsConnection)
-logo_url = "https://i.imgur.com/8Qj8jN4.png" 
+
+# Função para renderizar o nome FLASH STOP estilizado
+def render_flash_stop_logo(font_size="42px"):
+    st.markdown(f"""
+        <div style="text-align: center; margin-bottom: 20px;">
+            <h1 style="font-family: 'Arial Black', sans-serif; font-size: {font_size}; color: #000000; letter-spacing: -2px; margin-bottom: 0;">
+                FLASH <span style="color: #7CFC00; font-style: italic;">STOP</span>
+            </h1>
+            <p style="font-family: sans-serif; font-size: 12px; color: #666; margin-top: -10px; font-weight: bold;">
+                CONVENIÊNCIA INTELIGENTE
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
 
 def carregar_aba(nome_aba):
     try:
@@ -24,7 +36,7 @@ if "autenticado" not in st.session_state:
 if not st.session_state.autenticado:
     col_l1, col_l2, col_l3 = st.columns([1,2,1])
     with col_l2:
-        st.image(logo_url, width=300)
+        render_flash_stop_logo(font_size="55px")
         st.subheader("Acesso ao Sistema")
         with st.form("login"):
             u = st.text_input("Usuário")
@@ -38,9 +50,11 @@ if not st.session_state.autenticado:
     st.stop()
 
 # ==================== MENU LATERAL ====================
-st.sidebar.image(logo_url, use_container_width=True)
-menu = st.sidebar.radio("Navegação", 
-    ["📊 Dashboard & Alertas", "🛍️ Venda (PDV)", "📋 Relatórios Contábeis", "📦 Gestão de Estoque", "📍 Cadastrar PDV", "📟 Máquinas (Automação)"])
+with st.sidebar:
+    render_flash_stop_logo(font_size="30px")
+    st.divider()
+    menu = st.radio("Navegação", 
+        ["📊 Dashboard & Alertas", "🛍️ Venda (PDV)", "📋 Relatórios Contábeis", "📦 Gestão de Estoque", "📍 Cadastrar PDV", "📟 Máquinas (Automação)"])
 
 # ==================== 1. DASHBOARD & ALERTAS ====================
 if menu == "📊 Dashboard & Alertas":
@@ -67,7 +81,7 @@ if menu == "📊 Dashboard & Alertas":
                 for _, r in vencidos.iterrows(): st.error(f"**VENCIDO:** {r['nome']} ({r['validade']})")
             else: st.success("Validades em dia!")
 
-# ==================== 2. GESTÃO DE ESTOQUE (COM EXCLUSÃO) ====================
+# ==================== 2. GESTÃO DE ESTOQUE ====================
 elif menu == "📦 Gestão de Estoque":
     st.header("📦 Gestão de Estoque")
     df_estoque = carregar_aba("produtos")
@@ -90,62 +104,72 @@ elif menu == "📦 Gestão de Estoque":
     if not df_estoque.empty:
         with st.expander("🗑️ Excluir Produto"):
             prod_del = st.selectbox("Selecione para remover", df_estoque['nome'].tolist())
-            if st.button("Confirmar Exclusão do Produto"):
+            if st.button("Confirmar Exclusão"):
                 conn.update(worksheet="produtos", data=df_estoque[df_estoque['nome'] != prod_del])
                 st.warning(f"{prod_del} removido.")
                 st.rerun()
 
-# ==================== 3. MÁQUINAS (COM EXCLUSÃO) ====================
+# ==================== 3. MÁQUINAS (COM VÍNCULO AO PDV) ====================
 elif menu == "📟 Máquinas (Automação)":
     st.header("📟 Máquinas de Cartão")
     df_maqs = carregar_aba("maquinas")
+    df_pdvs = carregar_aba("pontos")
 
-    with st.form("nova_m"):
-        n = st.text_input("Nome/Apelido da Máquina")
-        tid = st.text_input("Serial (TID)")
-        if st.form_submit_button("Cadastrar Máquina"):
-            nova = pd.DataFrame([{"nome": n, "tid": tid}])
-            conn.update(worksheet="maquinas", data=pd.concat([df_maqs, nova], ignore_index=True))
-            st.success("Máquina cadastrada!")
-            st.rerun()
+    if df_pdvs.empty:
+        st.warning("⚠️ Cadastre um PDV antes de adicionar máquinas.")
+    else:
+        with st.expander("➕ Vincular Nova Máquina"):
+            with st.form("nova_m"):
+                n = st.text_input("Nome da Máquina")
+                tid = st.text_input("Serial (TID)")
+                pdv_v = st.selectbox("Vincular ao PDV:", df_pdvs['nome'].tolist())
+                if st.form_submit_button("Cadastrar e Vincular"):
+                    nova = pd.DataFrame([{"nome": n, "tid": tid, "pdv_vinculado": pdv_v}])
+                    conn.update(worksheet="maquinas", data=pd.concat([df_maqs, nova], ignore_index=True))
+                    st.success(f"Máquina {n} ligada ao {pdv_v}!")
+                    st.rerun()
 
     st.subheader("📋 Máquinas Ativas")
     st.dataframe(df_maqs, use_container_width=True)
 
     if not df_maqs.empty:
-        maq_del = st.selectbox("Remover Máquina", df_maqs['nome'].tolist())
-        if st.button("Excluir Máquina Selecionada"):
-            conn.update(worksheet="maquinas", data=df_maqs[df_maqs['nome'] != maq_del])
-            st.warning("Máquina removida.")
-            st.rerun()
+        with st.expander("🗑️ Remover Máquina"):
+            maq_del = st.selectbox("Remover Máquina", df_maqs['nome'].tolist())
+            if st.button("Confirmar Remoção"):
+                conn.update(worksheet="maquinas", data=df_maqs[df_maqs['nome'] != maq_del])
+                st.warning("Máquina removida.")
+                st.rerun()
 
 # ==================== 4. VENDA PDV ====================
 elif menu == "🛍️ Venda (PDV)":
     st.header("🛍️ Frente de Caixa")
     pdvs = carregar_aba("pontos")
     prods = carregar_aba("produtos")
+    maqs = carregar_aba("maquinas")
     
     if pdvs.empty or prods.empty:
-        st.warning("⚠️ Cadastre PDVs e Produtos antes de vender!")
+        st.warning("⚠️ Configure PDVs e Estoque antes de vender!")
     else:
         with st.form("venda_f"):
-            pdv_sel = st.selectbox("📍 PDV", pdvs['nome'].tolist())
+            pdv_sel = st.selectbox("📍 Selecione o PDV", pdvs['nome'].tolist())
+            maqs_pdv = maqs[maqs['pdv_vinculado'] == pdv_sel]['nome'].tolist()
+            maq_sel = st.selectbox("📟 Máquina de Cartão", maqs_pdv if maqs_pdv else ["Nenhuma máquina vinculada"])
             prod_sel = st.selectbox("📦 Item", prods['nome'].tolist())
             qtd = st.number_input("Quantidade", min_value=1, value=1)
+            forma = st.selectbox("Forma de Pagto", ["Cartão", "Pix", "Dinheiro"])
+            
             if st.form_submit_button("FINALIZAR VENDA"):
                 idx = prods[prods['nome'] == prod_sel].index[0]
                 if int(prods.at[idx, 'estoque']) >= qtd:
-                    # Registra Venda
-                    v_df = pd.DataFrame([{"data": datetime.now().strftime("%d/%m/%Y %H:%M"), "pdv": pdv_sel, "produto": prod_sel, "valor": float(prods.at[idx, 'preco']) * qtd}])
+                    v_df = pd.DataFrame([{"data": datetime.now().strftime("%d/%m/%Y %H:%M"), "pdv": pdv_sel, "maquina": maq_sel, "produto": prod_sel, "valor": float(prods.at[idx, 'preco']) * qtd, "forma": forma}])
                     conn.update(worksheet="vendas", data=pd.concat([carregar_aba("vendas"), v_df], ignore_index=True))
-                    # Baixa Estoque
                     prods.at[idx, 'estoque'] = int(prods.at[idx, 'estoque']) - qtd
                     conn.update(worksheet="produtos", data=prods)
-                    st.success("Venda concluída!")
+                    st.success("Venda processada!")
                     st.balloons()
                 else: st.error("Estoque insuficiente!")
 
-# ==================== 5. RELATÓRIOS & PDV ====================
+# ==================== 5. RELATÓRIOS E PDV ====================
 elif menu == "📋 Relatórios Contábeis":
     st.header("📋 Relatórios")
     vendas = carregar_aba("vendas")
