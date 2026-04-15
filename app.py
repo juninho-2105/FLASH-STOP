@@ -134,17 +134,50 @@ elif menu == "📍 Cadastrar PDV":
             conn.update(worksheet="pontos", data=pd.concat([carregar_aba("pontos"), pd.DataFrame([{"nome": n}])], ignore_index=True))
             st.success("PDV Cadastrado!")
 
+# ==================== 5. MÁQUINAS (AUTOMAÇÃO) ====================
 elif menu == "📟 Máquinas (Automação)":
-    st.header("📟 Máquinas")
-    with st.form("m_c"):
-        n = st.text_input("Nome Máquina")
-        tid = st.text_input("Serial")
-        if st.form_submit_button("Cadastrar"):
-            conn.update(worksheet="maquinas", data=pd.concat([carregar_aba("maquinas"), pd.DataFrame([{"nome": n, "tid": tid}])], ignore_index=True))
-            st.success("Máquina cadastrada!")
+    st.header("📟 Gestão de Máquinas de Cartão")
+    
+    # --- FORMULÁRIO DE CADASTRO ---
+    with st.expander("➕ Cadastrar Nova Máquina"):
+        with st.form("c_maq"):
+            n = st.text_input("Nome da Máquina (Ex: Stone PDV 01)")
+            tid = st.text_input("Serial Number (TID)")
+            if st.form_submit_button("CADASTRAR MÁQUINA"):
+                if n and tid:
+                    nova_m = pd.DataFrame([{"nome": n, "tid": tid}])
+                    conn.update(worksheet="maquinas", data=pd.concat([carregar_aba("maquinas"), nova_m], ignore_index=True))
+                    st.success(f"Máquina {n} cadastrada!")
+                    st.rerun()
+                else:
+                    st.error("Preencha todos os campos!")
 
-elif menu == "📦 Gestão de Stock":
-    st.header("📦 Stock")
+    st.divider()
+
+    # --- LISTAGEM E EXCLUSÃO ---
+    st.subheader("📋 Máquinas Ativas")
+    maquinas_df = carregar_aba("maquinas")
+    
+    if not maquinas_df.empty:
+        st.dataframe(maquinas_df, use_container_width=True)
+        
+        # Opção de Excluir
+        st.subheader("🗑️ Remover Máquina")
+        lista_maquinas = maquinas_df['nome'].tolist()
+        maq_para_excluir = st.selectbox("Selecione a máquina que deseja remover:", lista_maquinas)
+        
+        if st.button("CONFIRMAR EXCLUSÃO"):
+            # Filtra o dataframe mantendo todas as máquinas EXCETO a selecionada
+            novo_df_maquinas = maquinas_df[maquinas_df['nome'] != maq_para_excluir]
+            conn.update(worksheet="maquinas", data=novo_df_maquinas)
+            st.warning(f"Máquina {maq_para_excluir} removida com sucesso!")
+            time.sleep(1) # Pequena pausa para o usuário ler a mensagem
+            st.rerun()
+    else:
+        st.info("Nenhuma máquina cadastrada no momento.")
+
+elif menu == "📦 Gestão de Estoque":
+    st.header("📦 Estoque")
     with st.form("s_c"):
         n = st.text_input("Nome Produto")
         e = st.number_input("Estoque", min_value=0)
